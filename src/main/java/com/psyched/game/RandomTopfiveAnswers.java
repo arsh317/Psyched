@@ -6,9 +6,11 @@ import com.psyched.game.model.Question;
 import com.psyched.game.model.Round;
 import com.psyched.game.repository.EllenAnswerRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+@Component
 public class RandomTopfiveAnswers implements EllenStrategy{
 
     @Autowired

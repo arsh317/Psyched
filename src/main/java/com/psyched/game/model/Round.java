@@ -94,11 +94,16 @@ public class Round extends Auditable {
 
 
     public void selectAnswer(Player player, Boolean isCorrect,
-                             Boolean isEllenAnswer, PlayerAnswer selectedAnswer) throws InvalidActionForGameStateExeption {
+                             Boolean isEllenAnswer, PlayerAnswer selectedAnswer) throws InvalidActionForGameStateExeption, InvalidSelectionException {
 
         if(selectedAnswers.containsKey(player))
             throw new InvalidActionForGameStateExeption("Player have already selected answer for this round");
 
+        if(selectedAnswer != null && selectedAnswer.getPlayer() == player)
+            throw new InvalidSelectionException("Player can't select his own Answer");
+
+        if(isCorrect || isEllenAnswer)
+            selectedAnswer = null;
         PlayerSelection playerSelection = new PlayerSelection.PlayerSelectionBuilder()
                 .isCorrect(isCorrect).isEllenAnswer(isEllenAnswer).player(player).round(this)
                 .playerAnswer(selectedAnswer).build();
@@ -147,11 +152,11 @@ public class Round extends Auditable {
         }
     }
 
-    public JSONObject getRoundStats() {
-        JSONObject roundStats = new JSONObject();
+    public Map<String, Object> getRoundStats() {
+        Map<String, Object> roundStats = new HashMap<>();
         for(Player player : playerStats.keySet()){
 
-            JSONObject currPlayerStats = new JSONObject();
+            Map<String, Object> currPlayerStats = new HashMap<>();
             currPlayerStats.put(Constants.SCORES, playerStats.get(player).getScores());
             currPlayerStats.put(Constants.PSYCHED_COUNT, playerStats.get(player).getPsychedOthersCount());
             currPlayerStats.put(Constants.IS_CORRECT_ANS, selectedAnswers.get(player).getIsCorrect());
@@ -159,7 +164,7 @@ public class Round extends Auditable {
 
             Player psychedBy = null;
             if(selectedAnswers.get(player).getPlayerAnswer() != null)
-                selectedAnswers.get(player).getPlayerAnswer().getPlayer();
+                psychedBy = selectedAnswers.get(player).getPlayerAnswer().getPlayer();
             currPlayerStats.put(Constants.PSYCHED_BY, psychedBy);
 
             roundStats.put(player.getUserName(), currPlayerStats);
@@ -226,8 +231,10 @@ public class Round extends Auditable {
         }
 
         public Round build() {
-            for(Player player : round.getGame().getPlayers())
+            for(Player player : round.getGame().getPlayers()) {
                 round.getPlayerStats().put(player, new Stats());
+            }
+
             return round;
         }
     }

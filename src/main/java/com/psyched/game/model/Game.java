@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.util.JSONPObject;
 import com.psyched.game.Pair;
 import com.psyched.game.RandomTopfiveAnswers;
 import com.psyched.game.Util.OptionToSelect;
+import com.psyched.game.controller.GameController;
 import com.psyched.game.controller.QuestionsList;
 import com.psyched.game.exceptions.*;
+import com.psyched.game.repository.QuestionRepository;
 import lombok.Getter;
 import lombok.Setter;
 import org.json.JSONObject;
@@ -56,29 +58,6 @@ public class Game extends Auditable {
     @Getter @Setter
     private List<Round> rounds = new ArrayList<>();
 
-    public JSONObject getCurrRoundStats() {
-        if(gameStatus != GameStatus.OVER) return null;
-        return currentRound().getRoundStats();
-    }
-
-    public JSONObject getGameStats() {
-        if(gameStatus != GameStatus.OVER) return null;
-
-        JSONObject scores = new JSONObject();
-        for(Player player : players)
-            scores.put(player.getUserName(), playerStats.get(player).getScores());
-
-        return scores;
-    }
-
-    public List<OptionToSelect> getOptionsForPlayer(Player player) throws InvalidActionForGameStateExeption {
-        if(gameStatus != GameStatus.SELECTING_ANSWERS)
-            throw new InvalidActionForGameStateExeption("Game is currently not in selecting mode");
-
-        return currentRound().getOptionsForPlayer(player);
-    }
-
-
     public static final class GameBuilder {
         private int numRounds;
         private Boolean isEllen = Boolean.FALSE;
@@ -122,6 +101,29 @@ public class Game extends Auditable {
         }
     }
 
+    public Map<String, Object> getCurrRoundStats() {
+        if(gameStatus != GameStatus.OVER && gameStatus != GameStatus.GETTING_READY) return null;
+        return currentRound().getRoundStats();
+    }
+
+    public Map<String, Object> getGameStats() {
+        if(gameStatus != GameStatus.OVER && gameStatus != GameStatus.GETTING_READY) return null;
+
+        Map<String, Object> scores = new HashMap<>();
+        for(Player player : players)
+            scores.put(player.getUserName(), playerStats.get(player).getScores());
+
+        return scores;
+    }
+
+    public List<OptionToSelect> getOptionsForPlayer(Player player) throws InvalidActionForGameStateExeption {
+        if(gameStatus != GameStatus.SELECTING_ANSWERS)
+            throw new InvalidActionForGameStateExeption("Game is currently not in selecting mode");
+
+        return currentRound().getOptionsForPlayer(player);
+    }
+
+
     public void addPlayer(Player player){
         if(gameStatus != GameStatus.JOINING){
             new InvalidActionForGameStateExeption("Game has already started");
@@ -133,7 +135,7 @@ public class Game extends Auditable {
         playerStats.put(player, new Stats());
     }
 
-    public void start(Player player) throws Exception {
+    public void start(Player player, QuestionRepository questionRepository) throws Exception {
         if(player.getId() != leader.getId())
             throw new InvalidPlayerForStartingGameException("Player not leader of given Game");
         else if(players.size() <= 1)
@@ -142,22 +144,23 @@ public class Game extends Auditable {
             throw new InvalidActionForGameStateExeption("Game already started");
 
         startNewRound();
-        gameStatus = GameStatus.SELECTING_ANSWERS;
     }
 
     public void startNewRound(){
         Question question = QuestionsList.getInstance().getRandomQuestion(gameMode);
         EllenAnswer ellenAnswer = null;
-        if(isEllen)
-            ellenAnswer = new RandomTopfiveAnswers().getAnswer(currentRound());
 
         Round round = new Round.RoundBuilder().game(this)
                 .question(question)
                 .roundNumber(rounds.size())
-                .ellenAnswer(ellenAnswer)
                 .build();
 
+        if(isEllen)
+            ellenAnswer = new RandomTopfiveAnswers().getAnswer(round);
+        round.setEllenAnswer(ellenAnswer);
+
         rounds.add(round);
+        gameStatus = GameStatus.SUBMITTING_ANSWERS;
     }
 
     public boolean hasPlayer(Player player) {
@@ -170,6 +173,7 @@ public class Game extends Auditable {
 
     public void submitAnswer(Player player, String answer)
             throws InvalidActionForGameStateExeption, InvalidSubmissionException {
+
         if(gameStatus != GameStatus.SUBMITTING_ANSWERS)
             throw new InvalidActionForGameStateExeption("Not accepting answers at this point");
         Round round = currentRound();
@@ -179,13 +183,17 @@ public class Game extends Auditable {
     }
 
     public void selectAnswer(Player player, Boolean isCorrect,
-                             Boolean isEllen ,PlayerAnswer selectedAnswer) throws InvalidActionForGameStateExeption {
+                             Boolean isEllen ,PlayerAnswer selectedAnswer)
+        throws InvalidActionForGameStateExeption, InvalidSelectionException {
+
         if(gameStatus != GameStatus.SELECTING_ANSWERS)
             throw new InvalidActionForGameStateExeption("Not allowing selections at this point");
         Round round = currentRound();
         round.selectAnswer(player, isCorrect, isEllen, selectedAnswer);
-        if(round.getSelectedAnswers().size() >= players.size())
+        if(round.getSelectedAnswers().size() >= players.size()) {
             gameStatus = GameStatus.GETTING_READY;
+            round.endRound();
+        }
     }
 
     private Player getRandomGamePlayer(){
@@ -237,7 +245,6 @@ public class Game extends Auditable {
 
         if(round.getReadyPlayers().size() == players.size()){
             gameStatus = GameStatus.OVER;
-            round.endRound();
             if(rounds.size() == numRounds)
                 endGame();
             else

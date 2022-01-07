@@ -103,7 +103,7 @@ public class GameController {
         Player player = playerRepository.findByUserName(username)
                 .orElseThrow(() -> new PlayerNotFoundException("Player not found"));
 
-        gameToStart.start(player);
+        gameToStart.start(player, questionRepository);
         gameRepository.save(gameToStart);
         return "Started Successfully";
     }
@@ -174,12 +174,35 @@ public class GameController {
         return game.getOptionsForPlayer(player);
     }
 
+    @GetMapping("/select/{gc}/{username}/{isCorrectAnswer}/{isEllenAnswer}/{selectedAnswerId}")
+    public String selectAnswer(@PathVariable(value = "gc") String gameCode,
+                               @PathVariable(value = "username") String username,
+                               @PathVariable(value = "isCorrectAnswer") Boolean isCorrectAnswer,
+                               @PathVariable(value = "isEllenAnswer") Boolean isEllenAnswer,
+                               @PathVariable(value = "selectedAnswerId") Long selectedAnswerId
+                               ) throws Exception {
+
+        Game game = gameRepository.findById(Utils.getGameIdFromSecretCode(gameCode))
+                .orElseThrow(() -> new Exception("Invalid GameCode"));
+        Player player = playerRepository.findByUserName(username)
+                .orElseThrow(() -> new PlayerNotFoundException("Player not found"));
+
+        PlayerAnswer selectedAnswer = null;
+        try {
+            selectedAnswer = playerAnswerRepository.findById(selectedAnswerId).get();
+        } catch (Exception err){ selectedAnswer = null; }
+
+        game.selectAnswer(player, isCorrectAnswer, isEllenAnswer, selectedAnswer);
+        gameRepository.save(game);
+        return "selected successfully";
+    }
+
     @GetMapping("/game-state/{gc}")
-    public JSONObject getGameState(@PathVariable(value = "gc") String gameCode) throws Exception {
+    public Map<String, Object> getGameState(@PathVariable(value = "gc") String gameCode) throws Exception {
         Game game = gameRepository.findById(Utils.getGameIdFromSecretCode(gameCode))
                 .orElseThrow(() -> new InvalidGameException("Invalid GameCode"));
 
-        JSONObject gameState = new JSONObject();
+        Map<String, Object> gameState = new HashMap<>();
         gameState.put(Constants.CURR_ROUND_NUM, game.currentRound().getRoundNumber());
         gameState.put(Constants.ROUND_STATE, game.getGameStatus());
         gameState.put(Constants.ROUND_STATS, game.getCurrRoundStats());
@@ -188,26 +211,6 @@ public class GameController {
         return gameState;
     }
 
-    @GetMapping("/select/{gc}/{username}/{selectedAnswerId}")
-    public String selectAnswer(@PathVariable(value = "gc") String gameCode,
-                               @PathVariable(value = "username") String username,
-                               @PathVariable(value = "selectedAnswerId") Long selectedAnswerId,
-                               @PathVariable(value = "isEllenAnswer") Boolean isEllenAnswer,
-                               @PathVariable(value = "isCorrectAnswer") Boolean isCorrectAnswer) throws Exception {
-
-        Game game = gameRepository.findById(Utils.getGameIdFromSecretCode(gameCode))
-                .orElseThrow(() -> new Exception("Invalid GameCode"));
-        Player player = playerRepository.findByUserName(username)
-                .orElseThrow(() -> new PlayerNotFoundException("Player not found"));
-
-        PlayerAnswer selectedAnswer = null;
-        if(selectedAnswerId != null)
-            selectedAnswer = playerAnswerRepository.findById(selectedAnswerId).orElseThrow();
-
-        game.selectAnswer(player, isCorrectAnswer, isEllenAnswer, selectedAnswer);
-        gameRepository.save(game);
-        return "selected successfully";
-    }
 
     @GetMapping("/leave/{username}/{gc}")
     public void leaveGame(@PathVariable(value = "username") String username,
@@ -220,10 +223,11 @@ public class GameController {
                 .orElseThrow(() -> new PlayerNotFoundException("Player not found"));
 
         game.leavePlayer(player);
+        gameRepository.save(game);
     }
 
     @GetMapping("/get-ready/{username}/{gc}")
-    public void getReady(@PathVariable(value = "username") String username,
+    public String getReady(@PathVariable(value = "username") String username,
                          @PathVariable(value = "gc") String gameCode)
             throws InvalidGameException, PlayerNotFoundException, InvalidActionForGameStateExeption, InvalidSelectionException {
 
@@ -233,6 +237,9 @@ public class GameController {
                 .orElseThrow(() -> new PlayerNotFoundException("Player not found"));
 
         game.getReady(player);
+        gameRepository.save(game);
+
+        return "Success";
     }
 
 }

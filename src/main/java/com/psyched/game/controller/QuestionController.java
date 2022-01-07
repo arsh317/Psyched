@@ -1,7 +1,9 @@
 package com.psyched.game.controller;
 
+import com.psyched.game.model.GameMode;
 import com.psyched.game.model.Question;
 import com.psyched.game.repository.QuestionRepository;
+import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,6 +16,7 @@ import java.util.List;
 @RequestMapping("/dev")
 public class QuestionController {
     @Autowired
+    @Getter
     private QuestionRepository questionRepository;
 
     @GetMapping("/questions")
@@ -22,7 +25,14 @@ public class QuestionController {
     }
 
     @GetMapping("/questions/{id}")
-    public Question getAllQuestions(@PathVariable(value = "id") Long id) throws Exception {
+    public Question getQuestionsById(@PathVariable(value = "id") Long id) throws Exception {
         return questionRepository.findById(id).orElseThrow(Exception::new);
+    }
+
+    @GetMapping("/initialize-questions")
+    public String initializeQuestionsList() {
+        new QuestionsList.QuestionsListBuilder().questionRepository(questionRepository)
+                .build();
+        return "Initialized successfully";
     }
 }
